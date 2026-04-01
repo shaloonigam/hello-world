@@ -1,9 +1,9 @@
 """
 AWS Lambda Function — Amazon Hugging Face Data Extractor
 Fetches ALL available fields for Amazon's public models and datasets
-from the Hugging Face API and returns results directly in the Lambda response.
+from the Hugging Face API and saves the result as JSON to S3.
 
-No environment variables, no S3, no extra packages needed.
+S3 destination: s3://devex-jarvis-export-data-prod/hugging_face/
 """
 
 import json
@@ -11,8 +11,12 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone
 
-BASE_URL = "https://huggingface.co/api"
+import boto3
+
+BASE_URL = "https://" + "huggingface.co/api"
 AUTHOR = "amazon"
+S3_BUCKET = "devex-jarvis-export-data-prod"
+S3_FOLDER = "hugging_face"
 
 # Extra fields that must be explicitly requested via the expand parameter
 def fetch_from_hf(endpoint: str, params: dict) -> list:
@@ -184,8 +188,21 @@ def build_summary(models: list, datasets: list) -> dict:
     }
 
 
+def save_to_s3(data: dict, bucket: str, key: str) -> str:
+    """Save data as a JSON file to S3 and return the S3 URI."""
+    s3 = boto3.client("s3")
+    body = json.dumps(data, indent=2, default=str).encode("utf-8")
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body,
+        ContentType="application/json",
+    )
+    return "s3://" + bucket + "/" + key
+
+
 def lambda_handler(event, context):
-    """Lambda entry point — returns all results directly in the response."""
+    """Lambda entry point — extracts data and saves to S3 as JSON."""
     print("Fetching Amazon models from Hugging Face...")
     models = [build_model_record(m) for m in fetch_amazon_models(limit=100)]
     print(f"  Found {len(models)} models.")
@@ -194,11 +211,25 @@ def lambda_handler(event, context):
     datasets = [build_dataset_record(d) for d in fetch_amazon_datasets(limit=100)]
     print(f"  Found {len(datasets)} datasets.")
 
-    return {
-        "statusCode": 200,
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    s3_key = S3_FOLDER + "/amazon_hf_data_" + timestamp + ".json"
+
+    output = {
         "extracted_at": datetime.now(timezone.utc).isoformat(),
         "author": AUTHOR,
         "summary": build_summary(models, datasets),
         "models": models,
         "datasets": datasets,
+    }
+
+    print(f"Saving to S3: s3://{S3_BUCKET}/{s3_key}")
+    s3_uri = save_to_s3(output, S3_BUCKET, s3_key)
+    print(f"Saved successfully: {s3_uri}")
+
+    return {
+        "statusCode": 200,
+        "message": "Data extracted and saved successfully.",
+        "s3_uri": s3_uri,
+        "models_count": len(models),
+        "datasets_count": len(datasets),
     }
