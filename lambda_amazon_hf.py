@@ -15,31 +15,9 @@ BASE_URL = "https://huggingface.co/api"
 AUTHOR = "amazon"
 
 # Extra fields that must be explicitly requested via the expand parameter
-MODEL_EXPAND_FIELDS = [
-    "downloads_all_time",
-    "trending_score",
-    "safetensors",
-    "transformers_info",
-    "inference",
-    "inference_provider_mapping",
-    "base_models",
-    "spaces",
-    "children_model_count",
-    "eval_results",
-    "used_storage",
-    "security_repo_status",
-]
-
-DATASET_EXPAND_FIELDS = [
-    "downloads_all_time",
-    "trending_score",
-    "used_storage",
-]
-
-
 def fetch_from_hf(endpoint: str, params: dict) -> list:
     """Make a GET request to the Hugging Face API."""
-    query_string = urllib.parse.urlencode(params, doseq=True)
+    query_string = urllib.parse.urlencode(params)
     url = BASE_URL + "/" + endpoint + "?" + query_string
     req = urllib.request.Request(url, headers={"User-Agent": "lambda-hf-extractor/1.0"})
     with urllib.request.urlopen(req, timeout=30) as response:
@@ -47,24 +25,22 @@ def fetch_from_hf(endpoint: str, params: dict) -> list:
 
 
 def fetch_amazon_models(limit: int = 100) -> list:
-    """Fetch Amazon's public models with all available fields."""
+    """Fetch Amazon's public models."""
     return fetch_from_hf("models", {
         "author": AUTHOR,
         "limit": limit,
         "sort": "downloads",
         "direction": -1,
-        "expand": MODEL_EXPAND_FIELDS,
     })
 
 
 def fetch_amazon_datasets(limit: int = 100) -> list:
-    """Fetch Amazon's public datasets with all available fields."""
+    """Fetch Amazon's public datasets."""
     return fetch_from_hf("datasets", {
         "author": AUTHOR,
         "limit": limit,
         "sort": "downloads",
         "direction": -1,
-        "expand": DATASET_EXPAND_FIELDS,
     })
 
 
